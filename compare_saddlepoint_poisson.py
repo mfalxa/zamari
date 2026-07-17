@@ -2,7 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sim_astro_data import get_h2_iso_and_cgw
 from log_normal_h2 import get_lnorms, get_h2_mean_var
-from pdf_compound_jax import pdf_saddlepoint_vmap, build_population, sample_compound, lnpdf_saddlepoint_vmap
+from pdf_compound_jax import build_population, sample_compound, AstroPopulation
+from pdf_compound_jax_old import lnpdf_saddlepoint_vmap
 from scipy.special import logsumexp
 
 
@@ -68,21 +69,20 @@ h2 = h2[:-1]
 lnorms = get_lnorms(h2, freqs, n0_dot, alpha, m0, beta, z0)
 
 # get saddlepoint
-pdfs = lnpdf_saddlepoint_vmap(h2, freqs, 1/Tspan, n0_dot, alpha, log10_m0, beta, z0, tol=1e-3, N_floor=10**(-3.))
+astro = AstroPopulation(freqs)
+pdfs = astro.get_lnpdf(h2, astro.params)
+old_pdfs = lnpdf_saddlepoint_vmap(h2, freqs, 1/Tspan, n0_dot, alpha, log10_m0, beta, z0, tol=1e-3, N_floor=10**(-3.))
 # pdfs6 = pdf_saddlepoint_vmap(h2, freqs, 1/Tspan, n0_dot, alpha, log10_m0, beta, z0, tol=1e-10, N_floor=1e-10)
 
 print('norm', np.exp(logsumexp(pdfs, b=dh2, axis=1)))
 
 bins = np.logspace(np.log10(h2.min()), np.log10(h2.max()), 100)
 
-print(freqs[19] * yr)
-print(freqs[2] * yr)
-
 for n in range(len(freqs)):
 
     print(ratio[n])
-
-    h2_grid, N_grid = build_population(freqs[n], df=1/(20*yr), n0_dot=n0_dot, alpha=alpha, log10_m0=log10_m0, beta=beta, z0=z0)
+    mass_redshift_term = astro.d2n_dzdlog10M(astro.z[:, None], astro.dt_dz[:, None], 10**astro.log10_mc[None, :], **astro.params)
+    h2_grid, N_grid = build_population(freqs[n], astro.df, astro.log10_mc, astro.dlog10_mc, astro.z, astro.dz, astro.dm, mass_redshift_term)
     xc = sample_compound(h2_grid, N_grid,  n_real=5000, rng=0)
 
     print('norm', np.exp(logsumexp(pdfs[n], b=dh2)))
@@ -95,6 +95,7 @@ for n in range(len(freqs)):
     ax1.title.set_text('Lin scale')
     ax1.hist(xc, bins=bins, density=True, label='Monte carlo')
     ax1.plot(h2, np.exp(pdfs[n]), label='Saddelpoint')
+    ax1.plot(h2, np.exp(old_pdfs[n]), label='Saddelpoint')
     ax1.set_xscale('log')
     # ax1.set_xlim(5e-31, 6e-29)
     ax1.set_xlabel(r'$h^2_c$')

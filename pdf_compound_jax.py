@@ -5,6 +5,8 @@ from jax import lax
 from jax.scipy.special import logsumexp
 from astropy.cosmology import WMAP9 as cosmo
 from astropy import units as u
+import matplotlib.pyplot as plt
+
 
 jax.config.update('jax_enable_x64', True)
 
@@ -16,6 +18,43 @@ Mpc = 3.086e22
 yr = 365.25 * 24 * 3600
 
 
+class AstroPopulation:
+
+    def __init__(self, freqs, params={'n0_dot':1.26e-3, 'alpha':0.5, 'log10_m0':9.3, 'beta':0.5, 'z0':1.}, d2n_dzdlog10M=None, nz=50, nlogM=50):
+
+        self.freqs = freqs
+        self.df = freqs[0]
+        self.params = params
+        if d2n_dzdlog10M == None:
+            self.d2n_dzdlog10M = dn_dzdlog10M
+        else:
+            self.d2n_dzdlog10M = d2n_dzdlog10M
+
+        # bin parameter space
+        self.log10_mc = jnp.asarray(np.linspace(7, 11, nlogM) + np.log10(m_sun))
+        self.dlog10_mc = float(self.log10_mc[1] - self.log10_mc[0])
+
+        _z = np.logspace(-2, np.log10(4), nz + 1)
+        self.dz = jnp.asarray(np.diff(_z))
+        self.z = jnp.asarray(_z[:-1])
+        self.dm = jnp.asarray(cosmo.comoving_distance(_z[:-1]).value)
+
+        # cosmology terms
+        self.dt_dz = jnp.asarray((1 / ((1 + _z[:-1]) * cosmo.H(_z[:-1]))).to(u.Gyr).value)
+
+    def get_lnpdf(self, h2s, parameters):
+
+        mass_redshift_term = self.d2n_dzdlog10M(self.z[:, None], self.dt_dz[:, None], 10**self.log10_mc[None, :], **parameters)
+        lnpdf_saddle = lnpdf_saddlepoint_vmap(h2s, self.freqs, self.df, self.log10_mc, self.dlog10_mc, self.z, self.dz, self.dm, mass_redshift_term, tol=1e-3, N_floor=1e-3)
+
+        return lnpdf_saddle
+    
+    def get_pdf(self, h2s, parameters):
+
+        return np.exp(self.get_lnpdf(h2s, parameters))
+
+
+# vanilla functions with phenomenological model
 def h2_binary(z, dm, mc, f):
 
     dl = dm * (1 + z) * Mpc
@@ -25,7 +64,9 @@ def df_dt(mc, f):
 
     return (96/5) * jnp.pi**(8/3) * (G * mc / c**3)**(5/3) * f**(11/3)
 
-def dn_dzdlog10M(z, dt_dz, mc, n0_dot, alpha, m0, beta, z0):
+def dn_dzdlog10M(z, dt_dz, mc, n0_dot, alpha, log10_m0, beta, z0):
+
+    m0 = m_sun * 10**log10_m0
 
     # astrophysics terms
     mass_term = (mc / (1e7 * m_sun))**(-alpha) * jnp.exp(-mc/m0)
@@ -33,37 +74,22 @@ def dn_dzdlog10M(z, dt_dz, mc, n0_dot, alpha, m0, beta, z0):
 
     return n0_dot * mass_term * redshift_term
 
-def dN_dzdlog10Mdf(z, dt_dz, dm, mc, f, n0_dot, alpha, m0, beta, z0):
+def dN_dzdlog10Mdf(z, dm, mc, f, mass_redshift_term):
 
     # astrophysics terms
-    mass_redshift_term = dn_dzdlog10M(z, dt_dz, mc, n0_dot, alpha, m0, beta, z0)
     frequency_term = df_dt(mc, f)
 
     return mass_redshift_term * (1 + z) * 4*jnp.pi * (c / Mpc) * dm**2 / frequency_term
 
 
-# bin parameter space
-log10_mc = jnp.asarray(np.linspace(7, 11, 50) + np.log10(m_sun))
-dlog10_mc = float(log10_mc[1] - log10_mc[0])
-
-_z = np.logspace(-2, np.log10(4), 51)
-dz = jnp.asarray(np.diff(_z))
-z = jnp.asarray(_z[:-1])
-dm = jnp.asarray(cosmo.comoving_distance(_z[:-1]).value)
-
-# cosmology terms
-dt_dz = jnp.asarray((1 / ((1 + _z[:-1]) * cosmo.H(_z[:-1]))).to(u.Gyr).value)
-
-def build_population(freq, df=1/(20 * yr), n0_dot=1.26e-3, alpha=0.5, log10_m0=9.3, beta=0.5, z0=1.):
+def build_population(freq, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term):
     """Per-bin squared strains h2_i and expected counts N_i (grid of get_cgf)."""
 
-    m0 = 10**log10_m0 * m_sun
-
     h2_grid = jnp.ravel(h2_binary(z[:, None], dm[:, None], 10**log10_mc[None, :], freq)) * freq / df
-    N_grid = jnp.ravel(dN_dzdlog10Mdf(z[:, None], dt_dz[:, None], dm[:, None], 10**log10_mc[None, :],
-                                      freq, n0_dot, alpha, m0, beta, z0)
-                       * dz[:, None] * dlog10_mc * df)
+    N_grid = jnp.ravel(dN_dzdlog10Mdf(z[:, None], dm[:, None], 10**log10_mc[None, :], freq, mass_redshift_term) * dz[:, None] * dlog10_mc * df)
     
+    # plt.imshow(N_grid)
+    # plt.show()
     return h2_grid, N_grid
 
 def get_h2_mean_var(freqs, n0_dot, alpha, m0, beta, z0):
@@ -78,6 +104,8 @@ def get_h2_mean_var(freqs, n0_dot, alpha, m0, beta, z0):
     var_h2c = Nh4 * freqs**(-11/3) * df * (freqs**(4/3) * freqs / df)**2
     return h2c, var_h2c
 
+
+# functions for saddlepoint approximation
 def _outer(t, h2):
     """np.multiply.outer replacement (jnp.multiply has no .outer)."""
 
@@ -94,7 +122,6 @@ def cgf_prime(t, h2, N):
 def cgf_prime2(t, h2, N):
 
     return jnp.exp(logsumexp(_outer(t, h2), b=N * h2**2, axis=-1))
-
 
 def _solve_saddlepoint(y, a, N, s0=0., tol=1e-10, max_iter=100):
 
@@ -155,21 +182,22 @@ def logpdf_saddlepoint(x, h2, N, N_floor=1e-4, tol=1e-10):
 
     return jnp.where(sigma < dx[i_star], delta, logp)
 
-def pdf_saddlepoint(x, freq, df=1/(20*yr), n0_dot=1.26e-3, alpha=0.5, log10_m0=9.3, beta=0.5, z0=1., N_floor=1e-4, tol=1e-3):
+def pdf_saddlepoint(x, freq, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol=1e-3, N_floor=1e-3):
 
-    h2_grid, N_grid = build_population(freq, df, n0_dot, alpha, log10_m0, beta, z0)
+    h2_grid, N_grid = build_population(freq, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term)
     return jnp.exp(logpdf_saddlepoint(x, h2_grid, N_grid, N_floor=N_floor, tol=tol))
 
-def lnpdf_saddlepoint(x, freq, df=1/(20*yr), n0_dot=1.26e-3, alpha=0.5, log10_m0=9.3, beta=0.5, z0=1., tol=1e-3, N_floor=1e-4):
+def lnpdf_saddlepoint(x, freq, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol=1e-3, N_floor=1e-3):
 
-    h2_grid, N_grid = build_population(freq, df, n0_dot, alpha, log10_m0, beta, z0)
+    # build_population(freq, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term)
+    h2_grid, N_grid = build_population(freq, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term)
     return logpdf_saddlepoint(x, h2_grid, N_grid, tol=tol, N_floor=N_floor)
 
 
 lnpdf_saddlepoint_jit = jax.jit(lnpdf_saddlepoint)
 pdf_saddlepoint_jit = jax.jit(pdf_saddlepoint)
 
-def _lnpdf_over_freqs(x, freqs, df, n0_dot, alpha, log10_m0, beta, z0, tol, N_floor):
+def _lnpdf_over_freqs(x, freqs, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol=1e-3, N_floor=1e-3):
     """vmap of lnpdf_saddlepoint over a 1d array of frequencies.
 
     x is either (n_x,), the same grid for every frequency, or
@@ -177,24 +205,23 @@ def _lnpdf_over_freqs(x, freqs, df, n0_dot, alpha, log10_m0, beta, z0, tol, N_fl
     """
 
     x = jnp.asarray(x, dtype=float)
-    fun = lambda x_, f_: lnpdf_saddlepoint(x_, f_, df, n0_dot, alpha,
-                                           log10_m0, beta, z0, tol, N_floor)
+    fun = lambda x_, f_: lnpdf_saddlepoint(x_, f_, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol, N_floor)
     return jax.vmap(fun, in_axes=(0 if x.ndim == 2 else None, 0))(x, freqs)
 
 
 @jax.jit
-def lnpdf_saddlepoint_vmap(x, freqs, df=1/(20*yr), n0_dot=1.26e-3, alpha=0.5, log10_m0=9.3, beta=0.5, z0=1., tol=1e-3, N_floor=1e-4):
+def lnpdf_saddlepoint_vmap(x, freqs, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol, N_floor):
     """(n_freq, n_x) array of log p(x | freq); jitted vmap over freqs."""
 
-    return _lnpdf_over_freqs(x, freqs, df, n0_dot, alpha, log10_m0, beta, z0, tol, N_floor)
+    return _lnpdf_over_freqs(x, freqs, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol, N_floor)
 
 @jax.jit
-def pdf_saddlepoint_vmap(x, freqs, df=1/(20*yr), n0_dot=1.26e-3, alpha=0.5, log10_m0=9.3, beta=0.5, z0=1., tol=1e-3, N_floor=1e-4):
+def pdf_saddlepoint_vmap(x, freqs, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol=1e-3, N_floor=1e-3):
     """(n_freq, n_x) array of p(x | freq); jitted vmap over freqs."""
 
-    return jnp.exp(_lnpdf_over_freqs(x, freqs, df, n0_dot, alpha, log10_m0, beta, z0, tol, N_floor))
+    return jnp.exp(_lnpdf_over_freqs(x, freqs, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol, N_floor))
 
-def lnpdf_saddlepoint_pmap(x, freqs, df=1/(20*yr), n0_dot=1.26e-3, alpha=0.5, log10_m0=9.3, beta=0.5, z0=1., tol=1e-3, N_floor=1e-4):
+def lnpdf_saddlepoint_pmap(x, freqs, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol=1e-3, N_floor=1e-3):
 
     n_dev = jax.local_device_count()
     freqs = jnp.asarray(freqs, dtype=float)
@@ -205,20 +232,20 @@ def lnpdf_saddlepoint_pmap(x, freqs, df=1/(20*yr), n0_dot=1.26e-3, alpha=0.5, lo
 
     if x.ndim == 2:
         x_p = jnp.pad(x, ((0, n_pad), (0, 0)), mode='edge').reshape(n_dev, -1, x.shape[-1])
-        fun = lambda x_, f_: _lnpdf_over_freqs(x_, f_, df, n0_dot, alpha, log10_m0, beta, z0, tol, N_floor)
+        fun = lambda x_, f_: _lnpdf_over_freqs(x_, f_, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol, N_floor)
         out = jax.pmap(fun)(x_p, freqs_p)
     else:
-        fun = lambda f_: _lnpdf_over_freqs(x, f_, df, n0_dot, alpha, log10_m0, beta, z0, tol, N_floor)
+        fun = lambda f_: _lnpdf_over_freqs(x, f_, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol, N_floor)
         out = jax.pmap(fun)(freqs_p)
 
     return out.reshape(-1, out.shape[-1])[:n]
 
+def pdf_saddlepoint_pmap(x, freqs, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol=1e-3, N_floor=1e-4):
 
-def pdf_saddlepoint_pmap(x, freqs, df=1/(20*yr), n0_dot=1.26e-3, alpha=0.5, log10_m0=9.3, beta=0.5, z0=1., tol=1e-3, N_floor=1e-4):
+    return jnp.exp(lnpdf_saddlepoint_pmap(x, freqs, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_term, tol, N_floor))
 
-    return jnp.exp(lnpdf_saddlepoint_pmap(x, freqs, df, n0_dot, alpha, log10_m0, beta, z0, tol, N_floor))
 
-# draw h2c values from Poisson draw of the population and sum
+# draw h2 values from Poisson draw of the population and sum to get h2c
 def sample_compound(h2, N, n_real, rng=0, chunk=5000):
 
     key = jax.random.PRNGKey(rng if rng is not None else 0)
