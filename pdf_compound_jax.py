@@ -58,7 +58,7 @@ class AstroPopulation:
 def h2_binary(z, dm, mc, f):
 
     dl = dm * (1 + z) * Mpc
-    return (32 * jnp.pi**(4/3) / 5 / c**8) * ((1 + z) * G * mc)**(10/3) * f**(4/3) / dl**2 / (1 + z)**(4/3)
+    return (32 * jnp.pi**(4/3) / 5 / c**8) * ((1 + z) * G * mc)**(10/3) * f**(4/3) / dl**2
 
 def df_dt(mc, f):
 
@@ -70,7 +70,7 @@ def dn_dzdlog10M(z, dt_dz, mc, n0_dot, alpha, log10_m0, beta, z0):
 
     # astrophysics terms
     mass_term = (mc / (1e7 * m_sun))**(-alpha) * jnp.exp(-mc/m0)
-    redshift_term = z**beta * jnp.exp(-z/z0) * dt_dz
+    redshift_term = (1 + z)**beta * jnp.exp(-z/z0) * dt_dz
 
     return n0_dot * mass_term * redshift_term
 
@@ -86,7 +86,13 @@ def build_population(freq, df, log10_mc, dlog10_mc, z, dz, dm, mass_redshift_ter
     """Per-bin squared strains h2_i and expected counts N_i (grid of get_cgf)."""
 
     h2_grid = jnp.ravel(h2_binary(z[:, None], dm[:, None], 10**log10_mc[None, :], freq)) * freq / df
-    N_grid = jnp.ravel(dN_dzdlog10Mdf(z[:, None], dm[:, None], 10**log10_mc[None, :], freq, mass_redshift_term) * dz[:, None] * dlog10_mc * df)
+    N_grid = jnp.ravel(dN_dzdlog10Mdf(z[:, None], dm[:, None], 10**log10_mc[None, :], freq * (1 + z[:, None]), mass_redshift_term) * dz[:, None] * dlog10_mc * df * (1 + z[:, None]))
+    
+    # m0 = 10**log10_m0 * m_sun
+
+    # h2_grid = jnp.ravel(h2_binary(z[:, None], dm[:, None], 10**log10_mc[None, :], freq)) * freq / df
+    # N_grid = jnp.ravel(dN_dzdlog10Mdf(z[:, None], dt_dz[:, None], dm[:, None], 10**log10_mc[None, :],
+    #                                   freq * (1 + z[:, None]), n0_dot, alpha, m0, beta, z0) * dz[:, None] * dlog10_mc * df * (1 + z[:, None]))
     
     # plt.imshow(N_grid)
     # plt.show()

@@ -19,7 +19,7 @@ yr = 365.25 * 24 * 3600
 def h2_binary(z, mc, f):
 
     dl = cosmo.luminosity_distance(z).to(u.meter).value
-    return (32 * np.pi**(4/3) / 5 / c**8) * ((1 + z) * G * mc)**(10/3) * f**(4/3) / dl**2 / (1 + z)**(4/3)
+    return (32 * np.pi**(4/3) / 5 / c**8) * ((1 + z) * G * mc)**(10/3) * f**(4/3) / dl**2
 
 def mc_from_hz(z, h, f):
 
@@ -35,7 +35,7 @@ def dn_dzdlog10M(z, mc, n0_dot, alpha, m0, beta, z0):
 
     # astrophysics terms
     mass_term = (mc / (1e7 * m_sun))**(-alpha) * np.exp(-mc/m0)
-    redshift_term = z**beta * np.exp(-z/z0) * dt_dz
+    redshift_term = (1 + z)**beta * np.exp(-z/z0) * dt_dz
 
     return n0_dot * mass_term * redshift_term 
 
@@ -61,7 +61,7 @@ def lognormal(x, mu, sig):
 def get_h2_mean_var(freqs, n0_dot, alpha, m0, beta, z0, only_mean=False):
 
     df = freqs[0]
-    N_grid = dN_dzdlog10Mdf(z[:, None], mc[None, :], 1., n0_dot, alpha, m0, beta, z0) * dlog10_mc * dz[:, None]
+    N_grid = dN_dzdlog10Mdf(z[:, None], mc[None, :], (1 + z[:, None]), n0_dot, alpha, m0, beta, z0) * dlog10_mc * dz[:, None] * (1 + z[:, None])
     h2_grid = np.array(h2_binary(z[:, None], 10**log10_mc[None, :], 1.)) # * freq / df
 
     Nh2 = np.sum(N_grid * h2_grid)
