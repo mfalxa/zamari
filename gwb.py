@@ -24,7 +24,7 @@ class AstroPopulation:
 
     def __init__(self, freqs, params={'n0_dot':1.26e-3, 'alpha':0.5, 'log10_m0':9.3, 'beta':0.5, 'z0':1.}, d2n_dzdlog10M=None, dfdt=None, nz=50, nlogM=50):
 
-        self.freqs = freqs
+        self.freqs = jnp.array(freqs)
         self.df = freqs[0]
         self.params = params
         if d2n_dzdlog10M == None:
@@ -99,14 +99,14 @@ class AstroPopulation:
         fun = lambda x_, f_: self.lnpdf(x_, f_, parameters, tol, N_floor)
         return jax.vmap(fun, in_axes=(0 if x.ndim == 2 else None, 0))(x, freqs)
 
-    def lnpdf_vmap(self, x, freqs, parameters, tol=1e-5, N_floor=1e-3):
+    def lnpdf_vmap(self, x, parameters, tol=1e-5, N_floor=1e-3):
 
-        return self._lnpdf_over_freqs(x, freqs, parameters, tol, N_floor)
+        return self._lnpdf_over_freqs(x, self.freqs, parameters, tol, N_floor)
 
-    def lnpdf_pmap(self, x, freqs, parameters, tol=1e-5, N_floor=1e-3):
+    def lnpdf_pmap(self, x, parameters, tol=1e-5, N_floor=1e-3):
 
         n_dev = jax.local_device_count()
-        freqs = jnp.asarray(freqs, dtype=float)
+        freqs = jnp.asarray(self.freqs, dtype=float)
         x = jnp.asarray(x, dtype=float)
         n = freqs.shape[0]
         n_pad = (-n) % n_dev
