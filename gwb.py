@@ -7,15 +7,14 @@ from inspect import signature
 from functools import partial
 from astropy.cosmology import WMAP9 as cosmo
 from astropy import units as u
-import matplotlib.pyplot as plt
 
 
 jax.config.update('jax_enable_x64', True)
 
 
-m_sun = 2e30
-c = 3e8
-G = 6.67e-11
+m_sun = 1.989e30
+c = 2.998e8
+G = 6.674e-11
 Mpc = 3.086e22
 yr = 365.25 * 24 * 3600
 
@@ -122,6 +121,9 @@ class AstroPopulation:
 
         return out.reshape(-1, out.shape[-1])[:n]
 
+
+
+
 # GW driven binaries
 def df_dt(mc, f):
 
@@ -137,6 +139,8 @@ def dn_dzdlog10M(z, dt_dz, mc, n0_dot, alpha, log10_m0, beta, z0):
     redshift_term = (1 + z)**beta * jnp.exp(-z/z0) * dt_dz
 
     return n0_dot * mass_term * redshift_term
+
+
 
 
 # functions for saddlepoint approximation
@@ -221,6 +225,9 @@ def logpdf_saddlepoint(x, h2, N, N_floor=1e-4, tol=1e-10):
                       -jnp.log(dx[i_star]), -jnp.inf)
 
     return jnp.where(sigma < dx[i_star], delta, logp)
+
+
+
 
 # draw h2 values from Poisson draw of the population and sum to get h2c
 @jax.jit

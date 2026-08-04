@@ -10,9 +10,9 @@ from scipy.stats import gamma as gdist
 from scipy.stats import invgauss, lognorm
 
 
-m_sun = 2e30
-c = 3e8
-G = 6.67e-11
+m_sun = 1.989e30
+c = 2.998e8
+G = 6.674e-11
 Mpc = 3.086e22
 yr = 365.25 * 24 * 3600
 
@@ -122,85 +122,3 @@ dlog10_mc = (log10_mc[1] - log10_mc[0])
 z = np.logspace(-2, np.log10(4), 51)
 dz = np.diff(z)
 z = z[:-1]
-
-# X, Y = np.meshgrid(log10_mc - np.log10(m_sun), z)
-# d2n_dzdM = dn_dzdlog10M(z[:, None], 10**log10_mc[None, :], n0_dot, alpha, m0, beta, z0)
-# plt.contourf(X, Y, dn_dzdlog10M(z[:, None], 10**log10_mc[None, :], n0_dot, alpha, m0, beta, z0) * dz[:, None] * dlog10_mc)
-# plt.ylim((1e-3, 3))
-# plt.xlim((7, 9))
-# plt.ylabel('z')
-# plt.xlabel('log10 M')
-# plt.savefig('d2ndzdM.png', bbox_inches='tight')
-# plt.show()
-# print(kaixo)
-# plt.loglog(10**log10_mc / m_sun, np.sum(d2n_dzdM * dz[:, None], axis=0))
-# plt.axvline(m0 / m_sun, ls='--')
-# plt.xlabel(r'$\log_{10} M / M_{\odot} $')
-# plt.ylim((1e-7, 1))
-# plt.xlim((1e7, 1e11))
-# plt.savefig('dndz.png', bbox_inches='tight')
-# plt.show()
-# plt.loglog(z, np.sum(d2n_dzdM * dlog10_mc, axis=1))
-# plt.axvline(z0, ls='--')
-# plt.xlabel('z')
-# plt.ylim((1e-7, 1))
-# plt.xlim((1e7, 1e11))
-# plt.savefig('dndz.png', bbox_inches='tight')
-# plt.show()
-# print(kaixo)
-
-
-# dm = cosmo.comoving_distance(z).to(u.meter).value
-# # df = 1e-9
-# # dz = z[1] - z[0]
-
-# # set population grid
-# h2c = []
-# var_h2c = []
-# for freq in freqs:
-#     N_grid = dN_dzdlog10Mdf(z[:, None], mc[None, :], freq, n0_dot, alpha, m0, beta, z0) * dlog10_mc * dz[:, None] * df
-#     h2_grid = np.array(h2_binary(z[:, None], 10**log10_mc[None, :], freq)) * freq / df
-#     h2c.append(np.sum(N_grid * h2_grid))
-#     var_h2c.append(np.sum(N_grid * h2_grid**2))
-
-# h2c = np.array(h2c)
-# var_h2c = np.array(var_h2c)
-# plt.loglog(freqs, h2c)
-# plt.loglog(freqs, (h2c + var_h2c**0.5))
-
-# h2c, var_h2c = get_h2_mean_var(freqs, n0_dot, alpha, m0, beta, z0)
-# plt.loglog(freqs, h2c, ls='--', lw=3.)
-# plt.loglog(freqs, (h2c + var_h2c**0.5), ls='--', lw=3.)
-
-# plt.show()
-# dataset = []
-# for i in range(len(freqs)):
-#     mean = h2c[i]
-#     var = var_h2c[i]
-
-#     # lognorm params
-#     mu = np.log(mean) - 0.5 * np.log(1 + (var/mean**2))
-#     sig2 = np.log(1 + (var / mean**2))
-
-#     print(mu, sig2)
-#     lnorm2 = lognorm.rvs(s=sig2**0.5, scale=np.exp(mu), size=10000)
-#     dataset.append(lnorm2)
-
-# print(get_lnorm_mu_sig2(h2c, var_h2c))
-
-# dataset = np.log10(np.array(dataset)**0.5)
-# plt.violinplot(dataset.T, positions=freqs, widths=0.1 * freqs, showextrema=False)
-# plt.plot(freqs, np.log10(h2c**0.5), lw=3., ls='--', c='C0', label='Ensemble average')
-# plt.plot(freqs, dataset.T[3006], alpha=0.2, color='k', label='Single realisation')
-# # plt.plot(freqs, dataset.T[1612], alpha=0.2, color='k')
-# # plt.plot(freqs, dataset.T[2408], alpha=0.2, color='k')
-# # plt.plot(freqs, dataset.T[2109], alpha=0.2, color='k')
-# plt.axvline(1/yr, ls='--', c='k')
-# plt.xscale('log')
-# # plt.yscale('log')
-# plt.ylim((-15, -13.))
-# plt.ylabel('log10 hc')
-# plt.xlabel('Frequency [Hz]')
-# plt.legend(loc='lower left')
-# plt.savefig('log10_M0_8.png', bbox_inches='tight')
-# plt.show()
