@@ -21,7 +21,7 @@ yr = 365.25 * 24 * 3600
 
 class AstroPopulation:
 
-    def __init__(self, freqs, params={'n0_dot':1.26e-3, 'alpha':0.5, 'log10_m0':9.3, 'beta':0.5, 'z0':1.}, d2n_dzdlog10M=None, dfdt=None, nz=50, nlogM=50):
+    def __init__(self, freqs, params=['n0_dot', 'alpha', 'log10_m0', 'beta', 'z0'], d2n_dzdlog10M=None, dfdt=None, nz=50, nlogM=50):
 
         self.freqs = jnp.array(freqs)
         self.df = freqs[0]
@@ -47,6 +47,9 @@ class AstroPopulation:
         # cosmology terms
         self.dt_dz = jnp.asarray((1 / ((1 + _z[:-1]) * cosmo.H(_z[:-1]))).to(u.Gyr).value)
 
+        self.mr_keys = [p for p in self.params if p in signature(self.d2n_dzdlog10M).parameters]
+        self.f_keys = [p for p in self.params if p in signature(self.dfdt).parameters]
+
     @partial(jax.jit, static_argnums=0)
     def get_massredshift_term(self, z, dt_dz, mc, mr_params):
 
@@ -61,8 +64,8 @@ class AstroPopulation:
     def dN_dzdlog10Mdf(self, z, dt_dz, dm, mc, f, parameters):
 
         # map parameters
-        mr_params = {k: v for k, v in parameters.items() if k in signature(self.d2n_dzdlog10M).parameters}
-        df_params = {k: v for k, v in parameters.items() if k in signature(self.dfdt).parameters}
+        mr_params = {k: parameters[k] for k in self.mr_keys}
+        df_params = {k: parameters[k] for k in self.f_keys}
     
         # astrophysics terms
         mass_redshift_term = self.get_massredshift_term(z, dt_dz, mc, mr_params)
@@ -130,7 +133,7 @@ def df_dt(mc, f):
     return (96/5) * jnp.pi**(8/3) * (G * mc / c**3)**(5/3) * f**(11/3)
 
 # Phenomenological mass redshift function
-def dn_dzdlog10M(z, dt_dz, mc, n0_dot, alpha, log10_m0, beta, z0):
+def dn_dzdlog10M(z, dt_dz, mc, log10_n0_dot, alpha, log10_m0, beta, z0):
 
     m0 = m_sun * 10**log10_m0
 
@@ -138,7 +141,7 @@ def dn_dzdlog10M(z, dt_dz, mc, n0_dot, alpha, log10_m0, beta, z0):
     mass_term = (mc / (1e7 * m_sun))**(-alpha) * jnp.exp(-mc/m0)
     redshift_term = (1 + z)**beta * jnp.exp(-z/z0) * dt_dz
 
-    return n0_dot * mass_term * redshift_term
+    return 10**log10_n0_dot * mass_term * redshift_term
 
 
 
